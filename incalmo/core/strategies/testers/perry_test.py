@@ -90,5 +90,5 @@ class PerryStrategy(IncalmoStrategy, name="perry_strategy"):
         events = await self.high_level_action_orchestrator.run_action(
             ExfiltrateData(database)
         )
-        
+
         return True

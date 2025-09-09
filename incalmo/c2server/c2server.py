@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import json
 import binascii
@@ -31,13 +31,6 @@ app.config.update(
 )
 celery = make_celery(app)
 app.extensions["celery"] = celery
-
-print(f"[DEBUG] Flask app broker_url: {app.config.get('broker_url')}")
-print(f"[DEBUG] Flask app result_backend: {app.config.get('result_backend')}")
-print(f"[DEBUG] Environment broker_url: {os.environ.get('broker_url')}")
-print(f"[DEBUG] Environment result_backend: {os.environ.get('result_backend')}")
-print(f"[DEBUG] Celery broker URL: {celery.conf.broker_url}")
-print(f"[DEBUG] Celery result backend: {celery.conf.result_backend}")
 
 # Disable Flask's default request logging
 log = logging.getLogger("werkzeug")
@@ -125,6 +118,12 @@ def handle_key_error(exc):
 def handle_unexpected_error(exc):
     app.logger.exception(exc)
     return jsonify({"error": "Internal server error"}), 500
+
+
+@app.errorhandler(404)
+def not_found_error(e):
+    app.logger.warning(f"404 Not Found: {request.method} {request.url}")
+    return "Not Found", 404
 
 
 # Health check

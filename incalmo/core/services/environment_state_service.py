@@ -21,7 +21,6 @@ from config.attacker_config import AttackerConfig
 from incalmo.core.models.network import ScanResults
 from incalmo.core.models.network.open_port import OpenPort
 from incalmo.api.server_api import C2ApiClient
-from incalmo.models.attack_report import AttackReport
 
 
 class EnvironmentStateService:
@@ -274,14 +273,3 @@ class EnvironmentStateService:
 
     def set_initial_hosts(self, initial_hosts: list[Host]):
         self.initial_hosts = initial_hosts
-
-    def get_attack_report(self, strategy_id: str) -> AttackReport:
-        infected_hosts = {}
-        for host in self.network.get_all_hosts():
-            infected_hosts[host.hostname] = [agent.username for agent in host.agents]
-
-        return AttackReport(
-            strategy_id=strategy_id,
-            infected_hosts=infected_hosts,
-            # exfiltrated_data=self.exfiltrated_data,
-        )

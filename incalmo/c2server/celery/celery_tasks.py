@@ -14,13 +14,13 @@ def run_incalmo_strategy_task(self, config_dict: dict):
 
     # Run the strategy
     task_id = config.id
-    result = asyncio.run(run_incalmo_strategy(config, task_id))
+    asyncio.run(run_incalmo_strategy(config, task_id))
 
-    return {"status": TaskState.SUCCESS, "result": result.model_dump()}
+    return {"status": str(TaskState.SUCCESS)}
 
 
 @celery_worker.task(bind=True, name="cancel_strategy_task")
 def cancel_strategy_task(self, task_id: str):
     """Cancel a running strategy task."""
     celery_worker.control.revoke(task_id, terminate=True, signal="SIGTERM")
-    return {"status": TaskState.SUCCESS, "message": f"Task {task_id} cancelled"}
+    return {"status": str(TaskState.SUCCESS), "message": f"Task {task_id} cancelled"}

@@ -1,4 +1,4 @@
-from incalmo.core.models.attacker.agent import Agent
+from incalmo.models.agent import Agent
 
 from incalmo.core.models.events import (
     HostsDiscovered,
@@ -54,6 +54,9 @@ class EnvironmentStateService:
 
     def get_agents(self) -> list[Agent]:
         return self.c2api_client.get_agents()
+
+    def get_agent_by_paw(self, paw: str) -> Agent:
+        return self.c2api_client.get_agent(paw)
 
     def get_hosts_with_agents(self) -> list[Host]:
         hosts = []

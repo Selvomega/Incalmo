@@ -3,6 +3,7 @@ import os
 import sqlite3
 from typing import Any, Optional
 
+
 class StateStore:
     TABLE_NAME = "environment"
     DB_PATH = "state_store.db"

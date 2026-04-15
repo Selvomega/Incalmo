@@ -14,7 +14,7 @@ class ScanHost(LowLevelAction):
 
     def __init__(self, agent: Agent, host_ip: str):
         self.host = host_ip
-        command = f"nmap -sV --version-light -oX - {host_ip}"
+        command = f"nmap -sV --version-light -p 1-1024,30000-32767 -oX - {host_ip}"
 
         super().__init__(agent, command)
 

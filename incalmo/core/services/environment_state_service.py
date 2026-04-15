@@ -11,6 +11,9 @@ from incalmo.core.models.events import (
     VulnerableServiceFound,
     ScanReportEvent,
     ExfiltratedData,
+    APICredentialFound,
+    APIVulnerabilityFound,
+    APIEndpointDiscovered,
 )
 from incalmo.core.models.network import Host
 
@@ -39,6 +42,11 @@ class EnvironmentStateService:
         self.initial_hosts = []
 
         self.exfiltrated_data: list[ExfiltratedData] = []
+
+        # API/microservice testing state
+        self.api_credentials: list[APICredentialFound] = []
+        self.api_vulnerabilities: list[APIVulnerabilityFound] = []
+        self.discovered_endpoints: list[APIEndpointDiscovered] = []
 
     def __str__(self):
         env_status = f"EnvironmentStateService: \n"
@@ -103,6 +111,15 @@ class EnvironmentStateService:
 
             if type(event) is ExfiltratedData:
                 self.handle_exfiltrated_data(event)
+
+            if type(event) is APICredentialFound:
+                self.api_credentials.append(event)
+
+            if type(event) is APIVulnerabilityFound:
+                self.api_vulnerabilities.append(event)
+
+            if type(event) is APIEndpointDiscovered:
+                self.discovered_endpoints.append(event)
         return
 
     def handle_exfiltrated_data(self, event: ExfiltratedData):

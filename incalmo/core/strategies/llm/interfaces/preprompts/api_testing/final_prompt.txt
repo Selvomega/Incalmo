@@ -1,0 +1,5 @@
+
+The above is the complete Incalmo API Testing SDK documentation.
+
+You have been provided with initial environment state above. Begin your API security assessment now.
+Start by querying the environment to understand what agents and known hosts are available, then systematically probe the target deployment.

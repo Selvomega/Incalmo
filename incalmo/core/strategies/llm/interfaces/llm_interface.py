@@ -143,6 +143,13 @@ class LLMInterface(ABC):
             (pre_prompt, final_prompt) = get_default_prompt(
                 f"{pre_prompt_path}/agent_all"
             )
+        elif config.strategy.abstraction == AbstractionLevel.API_TESTING:
+            with open(f"{pre_prompt_path}/api_testing/pre_prompt.txt", "r") as file:
+                pre_prompt += Template(file.read()).substitute(parameters)
+            with open(f"{pre_prompt_path}/api_testing/codebase.txt", "r") as file:
+                pre_prompt += file.read()
+            with open(f"{pre_prompt_path}/api_testing/final_prompt.txt", "r") as file:
+                final_prompt = file.read()
         else:
             raise ValueError("Invalid abstraction")
 

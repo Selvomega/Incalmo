@@ -21,3 +21,12 @@ from .privledge_escalation.sudoedit_exploit import SudoeditExploit
 from .privledge_escalation.writeable_sudoers_exploit import WriteableSudoersExploit
 from .privledge_escalation.sudo_baron import SudoBaronExploit
 from .privledge_escalation.writeable_passwd import WriteablePasswdExploit
+
+from .http_request import HTTPRequest
+from .http_request_with_token import HTTPRequestWithToken
+from .oauth_client_credentials import OAuthClientCredentials
+from .http_method_fuzz import HTTPMethodFuzz
+from .api_endpoint_probe import APIEndpointProbe
+from .broken_object_level_auth import BrokenObjectLevelAuth
+from .missing_function_level_auth import MissingFunctionLevelAuth
+from .fuzz_api_parameter import FuzzAPIParameter

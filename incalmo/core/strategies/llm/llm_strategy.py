@@ -71,6 +71,13 @@ class LLMStrategy(IncalmoStrategy, ABC):
     def create_llm_interface(self) -> LLMInterface:
         pass
 
+    def get_action_classes(self) -> dict:
+        """Return the action classes available to the LLM's exec() context.
+
+        Override in subclasses to restrict which actions are exposed.
+        """
+        return get_all_action_classes()
+
     async def data_exfiltration_check(self):
         for host in self.initial_hosts:
             agent = host.get_agent()
@@ -168,7 +175,8 @@ class LLMStrategy(IncalmoStrategy, ABC):
                 self.logger.info(f"LLM action: \n{action}")
                 if llm_action.response_type == LLMResponseType.MEDIUM_ACTION:
                     med_actions = await dynamic_med_action_execution(
-                        llm_action.response
+                        llm_action.response,
+                        self.get_action_classes(),
                     )
                     action_obj = []
                     for action in med_actions:
@@ -180,6 +188,7 @@ class LLMStrategy(IncalmoStrategy, ABC):
                         self.environment_state_service,
                         self.attack_graph_service,
                         action,
+                        self.get_action_classes(),
                     )
 
                 current_response += get_infection_summary_str(
@@ -335,9 +344,11 @@ async def dynamic_query_execution(
 
 
 async def dynamic_action_execution(
-    environment_state_service, attack_graph_service, code
+    environment_state_service, attack_graph_service, code, action_classes=None
 ):
-    exec_globals = get_all_action_classes()
+    exec_globals = (
+        action_classes if action_classes is not None else get_all_action_classes()
+    )
     exec_locals = {}
     exec(code, exec_globals, exec_locals)
 
@@ -350,8 +361,10 @@ async def dynamic_action_execution(
     return result
 
 
-async def dynamic_med_action_execution(code):
-    exec_globals = get_all_action_classes()
+async def dynamic_med_action_execution(code, action_classes=None):
+    exec_globals = (
+        action_classes if action_classes is not None else get_all_action_classes()
+    )
     exec_locals = {}
     exec(code, exec_globals, exec_locals)
 

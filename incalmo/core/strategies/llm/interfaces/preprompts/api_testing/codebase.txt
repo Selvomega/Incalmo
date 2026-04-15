@@ -1,0 +1,308 @@
+# Incalmo API Testing SDK
+
+## 1. Environment State
+
+### 1.1 EnvironmentStateService
+Tracks all discovered API state. Accessible in queries and actions via `environment_state_service`.
+
+Key properties:
+- `environment_state_service.get_agents()` → `list[Agent]` — returns all agents; use `agents[0]` for the attacker agent
+- `environment_state_service.api_credentials` → `list[APICredentialFound]` — tokens acquired so far
+- `environment_state_service.api_vulnerabilities` → `list[APIVulnerabilityFound]` — vulnerabilities found so far
+- `environment_state_service.discovered_endpoints` → `list[APIEndpointDiscovered]` — endpoints probed so far
+- `environment_state_service.network.get_all_hosts()` → `list[Host]` — known hosts (use for base URLs if populated)
+
+### 1.2 Agent
+The attacker agent object required by all low-level actions.
+- `agent.paw` — unique agent identifier
+- `agent.hostname` — hostname of the attacker machine
+- `agent.host_ip_addrs` — IP addresses of the attacker machine
+
+---
+
+## 2. Events
+
+All actions return a list of events. Events are printed back to you as feedback after each action.
+
+### 2.1 HTTPResponseEvent
+Emitted by most HTTP actions. Contains the raw HTTP response.
+- `event.url` — the URL that was requested
+- `event.method` — HTTP method used
+- `event.status_code` — HTTP status code as a string (e.g. "200", "401", "404")
+- `event.response_body` — response body (may be truncated for large responses)
+
+### 2.2 APIEndpointDiscovered
+Emitted by `APIEndpointProbe`. Indicates an endpoint was probed.
+- `event.url` — full URL
+- `event.method` — HTTP method
+- `event.status_code` — HTTP status code
+
+### 2.3 APICredentialFound
+Emitted by `OAuthClientCredentials` on success. Contains an acquired token.
+- `event.token_type` — e.g. "Bearer"
+- `event.token_value` — the token string (use this in authenticated requests)
+- `event.scope` — OAuth scope, if present
+- `event.expires_in` — seconds until expiry, if provided
+
+### 2.4 APIVulnerabilityFound
+Emitted when a vulnerability is detected (by `BrokenObjectLevelAuth`, `MissingFunctionLevelAuth`).
+- `event.vuln_type` — e.g. "BOLA", "MissingAuth"
+- `event.url` — affected URL
+- `event.method` — HTTP method
+- `event.details` — human-readable description
+
+---
+
+## 3. Network Discovery Actions
+
+Use these first to discover live hosts and open ports. They run nmap via the agent and are far more efficient than probing individual IPs with HTTP requests.
+
+### 3.0 ScanNetwork
+Discovers all live hosts in a subnet using nmap. Use this before any HTTP probing.
+
+```python
+ScanNetwork(agent, subnet_mask)
+```
+
+- `subnet_mask` — CIDR range to scan, e.g. `"192.168.122.0/24"`
+
+Returns: `[HostsDiscovered]` events — each contains `subnet_ip_mask` and `host_ips` (list of discovered IPs)
+
+Example:
+```python
+ScanNetwork(agent, "192.168.122.0/24")
+```
+
+After this, query `environment_state_service.network.get_all_hosts()` to see the discovered hosts.
+
+---
+
+### 3.1 ScanHost
+Scans open ports and services on a specific host using nmap.
+
+```python
+ScanHost(agent, host_ip)
+```
+
+- `host_ip` — IP address to scan, e.g. `"192.168.122.20"`
+
+Returns: `[ServicesDiscoveredOnHost]` events — each contains `host_ip` and `services` dict (`{port: service_name}`)
+
+Example:
+```python
+ScanHost(agent, "192.168.122.20")
+```
+
+After scanning, query `environment_state_service.network.find_host_by_ip("192.168.122.20")` and inspect `host.open_ports` to see what services are running. Use those ports to construct your HTTP action URLs.
+
+---
+
+## 4. Low-Level HTTP Actions
+
+All actions require an `agent` as the first argument. Get it with:
+```python
+agent = environment_state_service.get_agents()[0]
+```
+
+### 3.1 HTTPRequest
+Generic HTTP request. The fundamental primitive for probing any endpoint.
+
+```python
+HTTPRequest(agent, url, method="GET", headers=None, body=None)
+```
+
+- `agent` — attacker agent
+- `url` — full URL to request
+- `method` — HTTP method (default "GET")
+- `headers` — dict of additional headers (optional)
+- `body` — request body string (optional)
+
+Returns: `[HTTPResponseEvent]`
+
+Example:
+```python
+HTTPRequest(agent, "https://api.example.com/v1/users", method="GET")
+HTTPRequest(agent, "https://api.example.com/v1/login", method="POST",
+            headers={"Content-Type": "application/json"},
+            body='{"username": "admin", "password": "admin"}')
+```
+
+---
+
+### 3.2 HTTPRequestWithToken
+HTTP request with a Bearer token in the Authorization header.
+
+```python
+HTTPRequestWithToken(agent, url, method, token, body=None)
+```
+
+- `token` — Bearer token string (obtain with `OAuthClientCredentials` first)
+- `body` — JSON body string (optional)
+
+Returns: `[HTTPResponseEvent]`
+
+Example:
+```python
+token = environment_state_service.api_credentials[0].token_value
+HTTPRequestWithToken(agent, "https://api.example.com/v1/users/123", "GET", token)
+```
+
+---
+
+### 3.3 OAuthClientCredentials
+Acquires an OAuth2 access token using the client_credentials grant.
+
+```python
+OAuthClientCredentials(agent, token_url, client_id, client_secret, scope="")
+```
+
+- `token_url` — full URL of the token endpoint (e.g. Keycloak's `/realms/{realm}/protocol/openid-connect/token`)
+- `client_id` — OAuth2 client ID
+- `client_secret` — OAuth2 client secret
+- `scope` — requested scope (optional)
+
+Returns: `[APICredentialFound]` on success, `[HTTPResponseEvent]` on failure
+
+Example:
+```python
+OAuthClientCredentials(
+    agent,
+    "https://auth.example.com/realms/mosip/protocol/openid-connect/token",
+    "mosip-reg-client",
+    "abc123secret",
+    scope="openid",
+)
+```
+
+---
+
+### 3.4 APIEndpointProbe
+Probes a single API path and returns its HTTP status code. Fast — use in loops to enumerate endpoints.
+
+```python
+APIEndpointProbe(agent, base_url, path, method="GET", token=None)
+```
+
+- `base_url` — base URL of the service (e.g. "https://api.example.com")
+- `path` — path to probe (e.g. "/v1/admin/users")
+- `token` — Bearer token for authenticated probing (optional)
+
+Returns: `[APIEndpointDiscovered]`
+
+Example:
+```python
+paths = ["/v1/health", "/v1/users", "/v1/admin", "/actuator", "/swagger-ui.html"]
+return [APIEndpointProbe(agent, "https://api.example.com", p) for p in paths]
+```
+
+---
+
+### 3.5 HTTPMethodFuzz
+Tests which HTTP methods a URL accepts (GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD).
+
+```python
+HTTPMethodFuzz(agent, url, token=None)
+```
+
+- `token` — Bearer token (optional)
+
+Returns: `[HTTPResponseEvent]` — one per method tested
+
+Example:
+```python
+HTTPMethodFuzz(agent, "https://api.example.com/v1/users/123")
+```
+
+---
+
+### 3.6 BrokenObjectLevelAuth
+Tests for BOLA/IDOR by requesting the same resource with multiple object IDs.
+The `url_template` must contain `{id}` as a placeholder.
+
+```python
+BrokenObjectLevelAuth(agent, url_template, object_ids, token)
+```
+
+- `url_template` — URL with `{id}` placeholder, e.g. `"https://api.example.com/v1/users/{id}"`
+- `object_ids` — list of IDs to test, e.g. `[1, 2, 3, 100, "admin"]`
+- `token` — Bearer token of the test user
+
+Returns: `[HTTPResponseEvent, ..., APIVulnerabilityFound]` — vulnerability event only if multiple IDs return 200
+
+Example:
+```python
+token = environment_state_service.api_credentials[0].token_value
+BrokenObjectLevelAuth(agent, "https://api.example.com/v1/users/{id}/data",
+                      [1, 2, 3, 42, 999], token)
+```
+
+---
+
+### 3.7 MissingFunctionLevelAuth
+Tests whether an endpoint is accessible without any authentication headers.
+Emits a vulnerability event if the endpoint returns 200/201.
+
+```python
+MissingFunctionLevelAuth(agent, url, method="GET", body=None)
+```
+
+Returns: `[HTTPResponseEvent, APIVulnerabilityFound?]`
+
+Example:
+```python
+MissingFunctionLevelAuth(agent, "https://api.example.com/v1/admin/users")
+MissingFunctionLevelAuth(agent, "https://api.example.com/v1/admin/reset", method="POST",
+                         body='{"confirm": true}')
+```
+
+---
+
+### 3.8 FuzzAPIParameter
+Sends a list of payloads as the value of a named parameter to discover validation failures,
+injection vulnerabilities, or information leakage in error responses.
+
+```python
+FuzzAPIParameter(agent, url, method, param_name, payloads, token=None)
+```
+
+- `param_name` — the JSON field name to fuzz (e.g. "username")
+- `payloads` — list of strings to send as the field value
+- `token` — Bearer token (optional)
+
+Returns: `[HTTPResponseEvent]` — one per payload sent
+
+Common payload lists:
+- Injection: `["' OR 1=1 --", '" OR ""="', "admin'--", "1; DROP TABLE users"]`
+- Boundary: `["", "null", "0", "-1", "99999999", "A" * 1000]`
+- XSS: `["<script>alert(1)</script>", "<img src=x onerror=alert(1)>"]`
+- SSRF: `["http://169.254.169.254/latest/meta-data/", "http://localhost:8080/admin"]`
+
+Example:
+```python
+token = environment_state_service.api_credentials[0].token_value
+FuzzAPIParameter(agent, "https://api.example.com/v1/search", "POST", "query",
+                 ["' OR 1=1 --", "", "A" * 5000, "<script>alert(1)</script>"],
+                 token=token)
+```
+
+---
+
+## 5. Useful Query Patterns
+
+```python
+# Get current agent
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.get_agents()
+
+# Check acquired tokens
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.api_credentials
+
+# Check found vulnerabilities
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.api_vulnerabilities
+
+# Check probed endpoints
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.discovered_endpoints
+```

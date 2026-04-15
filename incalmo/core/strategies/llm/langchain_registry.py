@@ -71,6 +71,12 @@ class LangChainRegistry:
                 timeout=None,
                 stop=None,
             ),
+            "claude-sonnet-4-6": lambda: ChatAnthropic(
+                model_name="claude-sonnet-4-6",
+                temperature=0.7,
+                timeout=None,
+                stop=None,
+            ),
             # Google Gemini models
             "gemini-1.5-pro": lambda: ChatGoogleGenerativeAI(
                 model="gemini-1.5-pro", temperature=0.7

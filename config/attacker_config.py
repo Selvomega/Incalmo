@@ -13,6 +13,7 @@ class Environment(Enum):
     RING = "RingEnvironment"
     ENTERPRISE_A = "EnterpriseA"
     ENTERPRISE_B = "EnterpriseB"
+    MOSIP = "MOSIP"
 
 
 class AbstractionLevel(str, Enum):

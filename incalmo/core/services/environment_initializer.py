@@ -38,4 +38,7 @@ class EnvironmentInitializer:
                     Subnet("192.168.204.0/24"),
                 ]
             )
+        elif self.attacker_config.environment == Environment.MOSIP.value:
+            # MOSIP cluster running as KVM VM on libvirt default network
+            return Network([Subnet("192.168.122.0/24")])
         return Network([Subnet("192.168.200.0/24")])

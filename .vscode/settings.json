@@ -1,6 +1,6 @@
 // In settings.json
 {
-    "python.languageServer": "None",
+    "python.languageServer": "Pylance",
     "[python]": {
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "charliermarsh.ruff"

@@ -6,7 +6,7 @@ from config.attacker_config import (
     StateMachineStrategy,
 )
 from incalmo.core.strategies.llm.langchain_strategy import LangChainStrategy
-from incalmo.core.strategies.llm.api_testing_strategy import APITestingStrategy
+from incalmo.core.strategies.llm.mosip_test_strategy import MOSIPTestStrategy
 from config.attacker_config import AbstractionLevel
 import incalmo.core.strategies
 
@@ -35,8 +35,8 @@ class StrategyFactory:
     ) -> IncalmoStrategy:
         """Build and return a strategy instance based on the config"""
         if isinstance(config.strategy, LLMStrategyConfig):
-            if config.strategy.abstraction == AbstractionLevel.API_TESTING:
-                return APITestingStrategy(config=config, task_id=task_id)
+            if config.strategy.abstraction == AbstractionLevel.MOSIP_TEST:
+                return MOSIPTestStrategy(config=config, task_id=task_id)
             return LangChainStrategy(config=config, task_id=task_id)
         elif isinstance(config.strategy, StateMachineStrategy):
             strategy_name = config.strategy.name

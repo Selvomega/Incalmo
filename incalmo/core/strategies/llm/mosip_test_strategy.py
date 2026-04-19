@@ -6,7 +6,7 @@ from incalmo.core.strategies.llm.interfaces.llm_interface import LLMInterface
 from incalmo.core.actions import LowLevel
 from config.attacker_config import AttackerConfig
 
-_API_TESTING_ACTIONS = {
+_MOSIP_TEST_ACTIONS = {
     # Network discovery
     "ScanNetwork",
     "ScanHost",
@@ -22,7 +22,7 @@ _API_TESTING_ACTIONS = {
 }
 
 
-class APITestingStrategy(LangChainStrategy, name="api_testing"):
+class MOSIPTestStrategy(LangChainStrategy, name="mosip_test"):
     """LangChain strategy restricted to API/microservice testing actions only.
 
     Exposes only the HTTP action classes in the LLM's exec() context, preventing
@@ -32,6 +32,6 @@ class APITestingStrategy(LangChainStrategy, name="api_testing"):
     def get_action_classes(self) -> dict:
         return {
             name: getattr(LowLevel, name)
-            for name in _API_TESTING_ACTIONS
+            for name in _MOSIP_TEST_ACTIONS
             if hasattr(LowLevel, name)
         }

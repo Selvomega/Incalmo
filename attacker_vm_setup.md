@@ -17,6 +17,34 @@ Incalmo and the C2 server run on the host. The attacker VM is the only thing tha
 
 ---
 
+## Destroying and Reinstalling the VM
+
+If you need to recreate the VM with updated cloud-init configuration (e.g., new Python packages or sudo privileges):
+
+```bash
+# 1. Stop all running services
+pkill -f sandcat.go  # Stop agent on VM
+pkill -f "c2server"  # Stop C2 server
+pkill -f "main.py"   # Stop Incalmo
+
+# 2. Destroy the VM
+sudo virsh destroy attacker-vm 2>/dev/null
+sudo virsh undefine attacker-vm 2>/dev/null
+sudo rm -f /var/lib/libvirt/images/attacker-vm.qcow2
+sudo rm -f /var/lib/libvirt/images/attacker-cloud-init.iso
+sudo rm -r /tmp/attacker-vm/
+
+# 3. Remove DHCP reservation
+virsh net-update default delete ip-dhcp-host \
+    '<host mac="52:54:00:cc:dd:ee" name="attacker-vm" ip="192.168.122.100"/>' \
+    --live --config 2>/dev/null || echo "DHCP reservation removal skipped"
+
+# 4. Recreate the VM using the updated setup
+# (Follow steps 1-2 below)
+```
+
+---
+
 ## Step 1: Block Attacker VM from Host Services
 
 The host exposes services on `0.0.0.0` (MySQL, SSH, RabbitMQ, etc.) that are reachable from `virbr0`. These rules block the attacker VM from initiating connections to the host, allowing only the C2 server port through. They do not affect SSH from the host into the VM, which is outbound from the host and not touched by the INPUT chain.
@@ -48,6 +76,7 @@ cat > /tmp/attacker-vm/user-data <<EOF
 users:
   - name: attacker
     shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - $(cat ~/.ssh/incalmo.pub)
 package_update: true
@@ -56,8 +85,11 @@ packages:
   - nikto
   - ncat
   - python3
+  - python3-pip
   - wget
   - openssh-client
+runcmd:
+  - pip install --user httpx pyjwt requests-oauthlib schemathesis beautifulsoup4
 EOF
 
 cloud-localds /tmp/attacker-vm/attacker-cloud-init.iso \
@@ -115,7 +147,9 @@ Wait ~30 seconds for cloud-init to finish, then verify SSH access:
 ssh -i ~/.ssh/incalmo attacker@192.168.122.100
 ```
 
-The `attacker` user has no sudo privileges — it can only run network tools and sandcat.
+The `attacker` user has **full sudo privileges (NOPASSWD)** and can install packages, run network tools, and execute sandcat. Pre-installed tools include:
+- Network: nmap, nikto, ncat, wget
+- Python packages (Phase 1): httpx, pyjwt, requests-oauthlib, schemathesis, beautifulsoup4
 
 ---
 

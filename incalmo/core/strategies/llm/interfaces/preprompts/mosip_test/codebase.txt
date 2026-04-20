@@ -10,6 +10,8 @@ Key properties:
 - `environment_state_service.api_credentials` → `list[APICredentialFound]` — tokens acquired so far
 - `environment_state_service.api_vulnerabilities` → `list[APIVulnerabilityFound]` — vulnerabilities found so far
 - `environment_state_service.discovered_endpoints` → `list[APIEndpointDiscovered]` — endpoints probed so far
+- `environment_state_service.request_history` → `list[HTTPRequestRecord]` — all HTTP requests made so far; each has `.url`, `.method`, `.status_code`, `.response_body` (may be None for probe-only requests)
+- `environment_state_service.was_requested(url, method)` → `bool` — True if this exact URL + method has already been requested; use before repeating a call
 - `environment_state_service.network.get_all_hosts()` → `list[Host]` — known hosts (use for base URLs if populated)
 
 ### 1.2 Agent
@@ -472,4 +474,12 @@ async def query(environment_state_service, attack_graph_service):
 # Check probed endpoints
 async def query(environment_state_service, attack_graph_service):
     return environment_state_service.discovered_endpoints
+
+# Check whether a specific URL + method has already been requested
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.was_requested("https://api.example.com/v1/users", "GET")
+
+# Review full request history
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.request_history
 ```

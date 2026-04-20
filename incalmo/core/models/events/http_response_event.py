@@ -15,8 +15,8 @@ class HTTPResponseEvent(Event):
         if self.status_code in ("404", "403", "401"):
             return f"HTTP {self.method} {self.url} → {self.status_code}"
 
-        preview = self.response_body[:100] if self.response_body else ""
+        preview = self.response_body[:1000] if self.response_body else ""
         preview = preview.replace("\n", " ").replace("\r", "")
-        if len(self.response_body) > 100:
+        if len(self.response_body) > 1000:
             preview += "..."
         return f"HTTP {self.method} {self.url} → {self.status_code}: {preview}"

@@ -9,5 +9,5 @@ class HTTPResponseEvent(Event):
         self.response_body = response_body
 
     def __str__(self) -> str:
-        preview = self.response_body[:200] if self.response_body else ""
+        preview = self.response_body[:1000] if self.response_body else ""
         return f"HTTP {self.method} {self.url} → {self.status_code}: {preview}"

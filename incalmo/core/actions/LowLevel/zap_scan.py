@@ -3,6 +3,7 @@ import shlex
 
 from incalmo.core.actions.low_level_action import LowLevelAction
 from incalmo.core.models.events.api_vulnerability_found_event import APIVulnerabilityFound
+from incalmo.core.models.events.bash_output_event import BashOutputEvent
 from incalmo.models.agent import Agent
 from incalmo.models.command_result import CommandResult
 
@@ -92,15 +93,41 @@ class ZAPScan(LowLevelAction):
 
         # Extract JSON between sentinel markers
         if _SENTINEL_START not in output or _SENTINEL_END not in output:
+            detail = results.stderr.strip() or output.strip() or "no output"
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"ZAPScan failed for {self.spec_url} — sentinels not found in output "
+                    f"(exit_code={results.exit_code}): {detail[:500]}",
+                )
+            )
             return events
 
         start = output.index(_SENTINEL_START) + len(_SENTINEL_START)
         end = output.index(_SENTINEL_END)
         raw_json = output[start:end].strip()
 
+        if not raw_json:
+            scan_output = output[: output.index(_SENTINEL_START)].strip()
+            detail = results.stderr.strip() or scan_output or "no output before sentinels"
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"ZAPScan for {self.spec_url} — report file was empty; scan likely failed "
+                    f"(exit_code={results.exit_code}): {detail[:500]}",
+                )
+            )
+            return events
+
         try:
             report = json.loads(raw_json)
         except json.JSONDecodeError:
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"ZAPScan for {self.spec_url} — failed to parse JSON report: {raw_json[:200]}",
+                )
+            )
             return events
 
         for site in report.get("site", []):

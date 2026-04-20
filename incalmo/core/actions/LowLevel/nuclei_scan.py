@@ -3,6 +3,7 @@ import shlex
 
 from incalmo.core.actions.low_level_action import LowLevelAction
 from incalmo.core.models.events.api_vulnerability_found_event import APIVulnerabilityFound
+from incalmo.core.models.events.bash_output_event import BashOutputEvent
 from incalmo.models.agent import Agent
 from incalmo.models.command_result import CommandResult
 
@@ -17,8 +18,13 @@ _NUCLEI_BINARY_INSTALL = (
     f"_VER=$({_NUCLEI_VER_CMD}) && "
     'curl -sL "https://github.com/projectdiscovery/nuclei/releases/download/${_VER}/nuclei_${_VER#v}_linux_amd64.zip"'
     " -o /tmp/_nuclei_install.zip && "
-    "unzip -qo /tmp/_nuclei_install.zip nuclei -d ~/.local/bin/ && "
-    "chmod +x ~/.local/bin/nuclei && "
+    "mkdir -p ~/.local/bin && "
+    "python3 -c \""
+    "import zipfile, os; "
+    "z = zipfile.ZipFile('/tmp/_nuclei_install.zip'); "
+    "z.extract('nuclei', os.path.expanduser('~/.local/bin')); "
+    "os.chmod(os.path.expanduser('~/.local/bin/nuclei'), 0o755)"
+    "\" && "
     "rm -f /tmp/_nuclei_install.zip"
 )
 
@@ -71,9 +77,11 @@ class NucleiScan(LowLevelAction):
             "-u", shlex.quote(target_url),
             "-tags", shlex.quote(tags),
             "-severity", shlex.quote(severity),
-            "-json",
+            "-jsonl",
             "-silent",
             "-no-interactsh",
+            "-timeout", "5",
+            "-rate-limit", "20",
         ]
         if token:
             parts += ["-H", shlex.quote(f"Authorization: Bearer {token}")]
@@ -102,4 +110,14 @@ class NucleiScan(LowLevelAction):
                 )
             except (json.JSONDecodeError, KeyError):
                 continue
+
+        if not events:
+            detail = results.stderr.strip() or results.output.strip() or "no output"
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"NucleiScan produced no findings for {self.target_url} "
+                    f"(exit_code={results.exit_code}): {detail[:500]}",
+                )
+            )
         return events

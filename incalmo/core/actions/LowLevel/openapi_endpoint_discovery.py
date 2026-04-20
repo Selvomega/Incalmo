@@ -60,4 +60,13 @@ class OpenAPIEndpointDiscovery(LowLevelAction):
             full_url = self.base_url + path
             events.append(APIEndpointDiscovered(full_url, method, "spec"))
 
+        if not events:
+            detail = results.stderr.strip() or results.output.strip() or "no output"
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"OpenAPIEndpointDiscovery failed for {self.base_url} "
+                    f"(exit_code={results.exit_code}): {detail}",
+                )
+            )
         return events

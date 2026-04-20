@@ -2,6 +2,7 @@ import shlex
 
 from incalmo.core.actions.low_level_action import LowLevelAction
 from incalmo.core.models.events.api_vulnerability_found_event import APIVulnerabilityFound
+from incalmo.core.models.events.bash_output_event import BashOutputEvent
 from incalmo.models.agent import Agent
 from incalmo.models.command_result import CommandResult
 
@@ -10,7 +11,8 @@ _FAILURE_DIVIDER = "_" * 5
 
 # Only installs if the binary is absent — safe to run repeatedly
 _ENSURE_SCHEMATHESIS = (
-    "command -v schemathesis >/dev/null 2>&1 || pip install -q schemathesis"
+    "export PATH=$PATH:~/.local/bin; "
+    "command -v schemathesis >/dev/null 2>&1 || python3 -m pip install schemathesis"
 )
 
 
@@ -34,14 +36,14 @@ class SchematesisScan(LowLevelAction):
         spec_url: str,
         base_url: str | None = None,
         token: str | None = None,
-        checks: str = "not_a_server_error,response_conformance",
+        checks: str = "not_a_server_error,response_schema_conformance,status_code_conformance",
         setup: bool = True,
     ):
         self.spec_url = spec_url
 
         parts = ["schemathesis", "run", shlex.quote(spec_url)]
         if base_url:
-            parts += ["--base-url", shlex.quote(base_url)]
+            parts += ["--url", shlex.quote(base_url)]
         if token:
             parts += ["--header", shlex.quote(f"Authorization: Bearer {token}")]
         parts += ["--checks", checks, "--no-color"]
@@ -108,6 +110,16 @@ class SchematesisScan(LowLevelAction):
                     self.spec_url,
                     "UNKNOWN",
                     "Schemathesis reported failures — inspect raw output for details",
+                )
+            )
+
+        if not events:
+            detail = results.stderr.strip() or output.strip() or "no output"
+            events.append(
+                BashOutputEvent(
+                    self.agent,
+                    f"SchematesisScan produced no findings for {self.spec_url} "
+                    f"(exit_code={results.exit_code}): {detail[:500]}",
                 )
             )
 

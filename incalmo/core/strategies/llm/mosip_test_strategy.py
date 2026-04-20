@@ -19,6 +19,8 @@ _MOSIP_TEST_ACTIONS = {
     "BrokenObjectLevelAuth",
     "MissingFunctionLevelAuth",
     "FuzzAPIParameter",
+    # Async HTTP (parallel requests)
+    "AsyncHTTPBatch",
 }
 
 

@@ -30,3 +30,4 @@ from .api_endpoint_probe import APIEndpointProbe
 from .broken_object_level_auth import BrokenObjectLevelAuth
 from .missing_function_level_auth import MissingFunctionLevelAuth
 from .fuzz_api_parameter import FuzzAPIParameter
+from .async_http_batch import AsyncHTTPBatch

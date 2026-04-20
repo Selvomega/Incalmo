@@ -287,7 +287,174 @@ FuzzAPIParameter(agent, "https://api.example.com/v1/search", "POST", "query",
 
 ---
 
-## 5. Useful Query Patterns
+### 3.9 AsyncHTTPBatch
+Execute multiple HTTP requests **in parallel** using httpx on the agent.
+This is significantly faster than sequential requests — use this to probe many endpoints at once.
+
+```python
+AsyncHTTPBatch(agent, urls, method="GET", headers=None, timeout=10)
+```
+
+- `urls` — list of full URLs to request in parallel (10-50 recommended)
+- `method` — HTTP method (default "GET")
+- `headers` — dict of additional headers (optional, applied to all requests)
+- `timeout` — timeout per request in seconds (default 10)
+
+Returns: `[HTTPResponseEvent]` — one per URL
+
+**Performance**: ~50 URLs in ~10s (parallel) vs. 500s (sequential) ✓ **10x faster**
+
+**When to use AsyncHTTPBatch:**
+- Probing many endpoints: `/health`, `/api`, `/admin`, `/swagger-ui`, etc.
+- API discovery across multiple services
+- Quick reconnaissance of open ports
+
+**When to use HTTPRequest/APIEndpointProbe instead:**
+- Testing a single endpoint with detailed payload inspection
+- Need response body for vulnerability analysis
+- Custom headers per request
+- Authenticated requests requiring token manipulation
+
+Example (batch discovery):
+```python
+# Fast: Discover API endpoints across two hosts
+hosts = ["192.168.122.20:8080", "192.168.122.20:8443"]
+paths = ["/", "/health", "/api", "/v1", "/swagger-ui.html", "/admin", "/config"]
+urls = [f"http://{host}{path}" for host in hosts for path in paths]
+AsyncHTTPBatch(agent, urls)  # 14 URLs in ~3 seconds
+```
+
+Example (sequential depth):
+```python
+# After AsyncHTTPBatch finds /api, use HTTPRequest for detailed testing
+HTTPRequest(agent, "http://192.168.122.20:8080/api", method="POST",
+            headers={"Content-Type": "application/json"},
+            body='{"query": "test"}')
+```
+
+Tip: Batch URLs into groups of 10-50 for best performance. Combine with single requests for deeper analysis.
+
+---
+
+## 5. MOSIP-Specific Attack Strategy
+
+### 5.1 Attack Flow Recommendations
+
+**Phase 1: Service Discovery**
+1. Use `ScanHost` on discovered targets to find open ports
+2. Use `AsyncHTTPBatch` with common root paths to identify running services:
+   - `["/", "/health", "/actuator", "/api", "/v1", "/api-docs", "/swagger-ui.html"]`
+
+**Phase 2: MOSIP Service Identification**
+Once you find live services, use `AsyncHTTPBatch` with MOSIP-specific paths:
+```python
+mosip_paths = [
+    "/mosip/", "/mosip/v1/", "/mosip/v1/auth/", "/mosip/v1/registration/",
+    "/keycloak/", "/auth/realms/mosip/", "/auth/",
+    "/.well-known/openid-configuration", "/auth/realms/mosip/protocol/openid-connect/token"
+]
+```
+
+**Phase 3: Exploit MOSIP-Specific Vulnerabilities**
+- Use `BrokenObjectLevelAuth` to test if you can access other citizens' ID records
+- Use `MissingFunctionLevelAuth` on registration/auth endpoints to bypass protection
+- Use `FuzzAPIParameter` with MOSIP payloads to test input validation
+- Use `OAuthClientCredentials` to attempt token hijacking if credentials are exposed
+
+---
+
+### 5.2 Known MOSIP Endpoints (High Priority)
+
+**Authentication & IAM:**
+- `/auth/realms/mosip/protocol/openid-connect/token` — OAuth token endpoint
+- `/auth/realms/mosip/account/` — User account management
+- `/mosip/v1/auth/authenticate` — Authentication endpoint
+- `/mosip/v1/auth/authorize` — Authorization endpoint
+- `/keycloak/admin/` — Keycloak admin panel (often exposed)
+
+**Registration & Enrollment:**
+- `/mosip/v1/registration/center/` — Registration centers
+- `/mosip/v1/registration/status/{id}` — Registration status (test BOLA here!)
+- `/mosip/v1/registration/sync` — Sync registrations
+- `/mosip/v1/issuance/` — ID issuance endpoints
+
+**Resident APIs (Usually Protected but Often Leaky):**
+- `/mosip/v1/resident/` — Resident data endpoints
+- `/mosip/v1/resident/{id}` — Individual resident records (HIGH IMPACT for BOLA)
+- `/mosip/v1/resident/uin` — Unique ID lookup
+- `/mosip/v1/resident/eid` — E-ID lookup
+
+**Admin & Config (Often Unprotected):**
+- `/mosip/v1/admin/` — Admin functions
+- `/mosip/v1/config/` — Configuration endpoint (may leak secrets)
+- `/mosip/v1/audit/` — Audit logs
+- `/actuator/` — Spring actuator (may leak environment variables, credentials)
+- `/actuator/env` — Environment configuration
+- `/actuator/beans` — Loaded beans (useful for finding hidden endpoints)
+
+**Biometric Data (Highly Sensitive):**
+- `/mosip/v1/biometric/` — Biometric data endpoints
+- `/mosip/v1/registration/{id}/biometrics` — Biometric records
+
+---
+
+### 5.3 Attack Vectors by Action
+
+| Action | MOSIP Attack | Example |
+|--------|--------------|---------|
+| **AsyncHTTPBatch** | Quick service discovery | Probe 20+ MOSIP paths in seconds |
+| **OAuthClientCredentials** | Token acquisition | Try to get Keycloak tokens with default/leaked credentials |
+| **MissingFunctionLevelAuth** | Bypass auth entirely | Test if `/mosip/v1/resident/` requires auth |
+| **BrokenObjectLevelAuth** | IDOR on resident records | Access resident {id=1,2,3,...} without permission |
+| **FuzzAPIParameter** | Input validation bypass | Send SQL injection, XSS payloads to registration endpoints |
+| **HTTPMethodFuzz** | HTTP method override | Test if PUT/DELETE work when GET/POST is restricted |
+| **HTTPRequest** | Custom exploitation | POST complex payloads to sensitive endpoints after discovery |
+
+---
+
+### 5.4 Example Attack Sequence
+
+```python
+# Step 1: Identify MOSIP services
+AsyncHTTPBatch(agent, [
+    "http://192.168.122.20:30080/mosip/v1/",
+    "http://192.168.122.20:30080/auth/realms/mosip/",
+    "http://192.168.122.20:30080/actuator/env",
+])
+
+# Step 2: If auth endpoint found, try to get token
+OAuthClientCredentials(agent,
+    "http://192.168.122.20:30080/auth/realms/mosip/protocol/openid-connect/token",
+    "admin", "admin"  # Try common default creds
+)
+
+# Step 3: Test for BOLA on resident records
+BrokenObjectLevelAuth(agent,
+    "http://192.168.122.20:30080/mosip/v1/resident/{id}",
+    ["1", "2", "3", "admin", "root", "test"],
+    token  # Use acquired token if available
+)
+
+# Step 4: If endpoints require auth, try to bypass
+MissingFunctionLevelAuth(agent,
+    "http://192.168.122.20:30080/mosip/v1/resident/list"
+)
+```
+
+---
+
+### 5.5 Success Indicators
+
+**Found vulnerability when:**
+- BOLA test returns 200 for IDs you shouldn't access → `APIVulnerabilityFound` event
+- MissingFunctionLevelAuth returns 200 on protected endpoint → `APIVulnerabilityFound` event
+- HTTPRequest reveals sensitive data (ID numbers, biometrics, credentials) in response
+- Actuator endpoints leak environment variables or database credentials
+- Token acquisition succeeds with weak/default credentials
+
+---
+
+## 6. Useful Query Patterns
 
 ```python
 # Get current agent

@@ -9,7 +9,7 @@ _STATUS_SENTINEL = "__INCALMO_STATUS__"
 
 
 def _build_curl(url: str, method: str, headers: dict | None, body: str | None) -> str:
-    parts = ["curl", "-s", "-X", method, shlex.quote(url)]
+    parts = ["curl", "-s", "-k", "-X", method, shlex.quote(url)]
     if headers:
         for key, value in headers.items():
             parts += ["-H", shlex.quote(f"{key}: {value}")]

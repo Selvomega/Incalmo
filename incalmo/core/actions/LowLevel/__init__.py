@@ -34,3 +34,5 @@ from .openapi_endpoint_discovery import OpenAPIEndpointDiscovery
 from .schemathesis_scan import SchematesisScan
 from .nuclei_scan import NucleiScan
 from .zap_scan import ZAPScan
+from .async_http_batch import AsyncHTTPBatch
+from .look_up_document import LookUpDocument

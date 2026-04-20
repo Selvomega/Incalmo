@@ -27,7 +27,7 @@ class AbstractionLevel(str, Enum):
     AGENT_EXFILTRATE_DATA = "agent_exfiltrate_data"
     AGENT_FIND_INFORMATION = "agent_find_information"
     AGENT_ALL = "agent_all"
-    API_TESTING = "api_testing"
+    MOSIP_TEST = "mosip_test"
 
 
 class LLMStrategyConfig(BaseModel):

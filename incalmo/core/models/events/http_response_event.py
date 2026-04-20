@@ -9,5 +9,14 @@ class HTTPResponseEvent(Event):
         self.response_body = response_body
 
     def __str__(self) -> str:
-        preview = self.response_body[:200] if self.response_body else ""
+        if not self.response_body:
+            return f"HTTP {self.method} {self.url} → {self.status_code}"
+
+        if self.status_code in ("404", "403", "401"):
+            return f"HTTP {self.method} {self.url} → {self.status_code}"
+
+        preview = self.response_body[:1000] if self.response_body else ""
+        preview = preview.replace("\n", " ").replace("\r", "")
+        if len(self.response_body) > 1000:
+            preview += "..."
         return f"HTTP {self.method} {self.url} → {self.status_code}: {preview}"

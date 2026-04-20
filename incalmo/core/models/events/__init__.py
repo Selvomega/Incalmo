@@ -19,6 +19,8 @@ from .vulnerable_service_found_event import VulnerableServiceFound
 from .scan_report_event import ScanReportEvent
 
 from .http_response_event import HTTPResponseEvent
+from .http_batch_summary_event import HTTPBatchSummaryEvent
 from .api_endpoint_discovered_event import APIEndpointDiscovered
 from .api_credential_found_event import APICredentialFound
 from .api_vulnerability_found_event import APIVulnerabilityFound
+from .documentation_lookup_event import DocumentationLookup

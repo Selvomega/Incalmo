@@ -10,6 +10,8 @@ Key properties:
 - `environment_state_service.api_credentials` → `list[APICredentialFound]` — tokens acquired so far
 - `environment_state_service.api_vulnerabilities` → `list[APIVulnerabilityFound]` — vulnerabilities found so far
 - `environment_state_service.discovered_endpoints` → `list[APIEndpointDiscovered]` — endpoints probed so far
+- `environment_state_service.request_history` → `list[HTTPRequestRecord]` — all HTTP requests made so far; each has `.url`, `.method`, `.status_code`, `.response_body` (may be None for probe-only requests)
+- `environment_state_service.was_requested(url, method)` → `bool` — True if this exact URL + method has already been requested; use before repeating a call
 - `environment_state_service.network.get_all_hosts()` → `list[Host]` — known hosts (use for base URLs if populated)
 
 ### 1.2 Agent
@@ -104,7 +106,7 @@ All actions require an `agent` as the first argument. Get it with:
 agent = environment_state_service.get_agents()[0]
 ```
 
-### 3.1 HTTPRequest
+### 4.1 HTTPRequest
 Generic HTTP request. The fundamental primitive for probing any endpoint.
 
 ```python
@@ -129,7 +131,7 @@ HTTPRequest(agent, "https://api.example.com/v1/login", method="POST",
 
 ---
 
-### 3.2 HTTPRequestWithToken
+### 4.2 HTTPRequestWithToken
 HTTP request with a Bearer token in the Authorization header.
 
 ```python
@@ -149,7 +151,7 @@ HTTPRequestWithToken(agent, "https://api.example.com/v1/users/123", "GET", token
 
 ---
 
-### 3.3 OAuthClientCredentials
+### 4.3 OAuthClientCredentials
 Acquires an OAuth2 access token using the client_credentials grant.
 
 ```python
@@ -176,7 +178,7 @@ OAuthClientCredentials(
 
 ---
 
-### 3.4 APIEndpointProbe
+### 4.4 APIEndpointProbe
 Probes a single API path and returns its HTTP status code. Fast — use in loops to enumerate endpoints.
 
 ```python
@@ -197,7 +199,7 @@ return [APIEndpointProbe(agent, "https://api.example.com", p) for p in paths]
 
 ---
 
-### 3.5 HTTPMethodFuzz
+### 4.5 HTTPMethodFuzz
 Tests which HTTP methods a URL accepts (GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD).
 
 ```python
@@ -215,7 +217,7 @@ HTTPMethodFuzz(agent, "https://api.example.com/v1/users/123")
 
 ---
 
-### 3.6 BrokenObjectLevelAuth
+### 4.6 BrokenObjectLevelAuth
 Tests for BOLA/IDOR by requesting the same resource with multiple object IDs.
 The `url_template` must contain `{id}` as a placeholder.
 
@@ -238,7 +240,7 @@ BrokenObjectLevelAuth(agent, "https://api.example.com/v1/users/{id}/data",
 
 ---
 
-### 3.7 MissingFunctionLevelAuth
+### 4.7 MissingFunctionLevelAuth
 Tests whether an endpoint is accessible without any authentication headers.
 Emits a vulnerability event if the endpoint returns 200/201.
 
@@ -257,7 +259,7 @@ MissingFunctionLevelAuth(agent, "https://api.example.com/v1/admin/reset", method
 
 ---
 
-### 3.8 FuzzAPIParameter
+### 4.8 FuzzAPIParameter
 Sends a list of payloads as the value of a named parameter to discover validation failures,
 injection vulnerabilities, or information leakage in error responses.
 
@@ -284,6 +286,55 @@ FuzzAPIParameter(agent, "https://api.example.com/v1/search", "POST", "query",
                  ["' OR 1=1 --", "", "A" * 5000, "<script>alert(1)</script>"],
                  token=token)
 ```
+
+---
+
+### 4.9 AsyncHTTPBatch
+Execute multiple HTTP requests **in parallel** using httpx on the agent.
+This is significantly faster than sequential requests — use this to probe many endpoints at once.
+
+```python
+AsyncHTTPBatch(agent, urls, method="GET", headers=None, timeout=10)
+```
+
+- `urls` — list of full URLs to request in parallel (10-50 recommended)
+- `method` — HTTP method (default "GET")
+- `headers` — dict of additional headers (optional, applied to all requests)
+- `timeout` — timeout per request in seconds (default 10)
+
+Returns: `[HTTPResponseEvent]` — one per URL
+
+**Performance**: ~50 URLs in ~10s (parallel) vs. 500s (sequential) ✓ **10x faster**
+
+**When to use AsyncHTTPBatch:**
+- Probing many endpoints: `/health`, `/api`, `/admin`, `/swagger-ui`, etc.
+- API discovery across multiple services
+- Quick reconnaissance of open ports
+
+**When to use HTTPRequest/APIEndpointProbe instead:**
+- Testing a single endpoint with detailed payload inspection
+- Need response body for vulnerability analysis
+- Custom headers per request
+- Authenticated requests requiring token manipulation
+
+Example (batch discovery):
+```python
+# Fast: Discover API endpoints across two hosts
+hosts = ["192.168.122.20:8080", "192.168.122.20:8443"]
+paths = ["/", "/health", "/api", "/v1", "/swagger-ui.html", "/admin", "/config"]
+urls = [f"http://{host}{path}" for host in hosts for path in paths]
+AsyncHTTPBatch(agent, urls)  # 14 URLs in ~3 seconds
+```
+
+Example (sequential depth):
+```python
+# After AsyncHTTPBatch finds /api, use HTTPRequest for detailed testing
+HTTPRequest(agent, "http://192.168.122.20:8080/api", method="POST",
+            headers={"Content-Type": "application/json"},
+            body='{"query": "test"}')
+```
+
+Tip: Batch URLs into groups of 10-50 for best performance. Combine with single requests for deeper analysis.
 
 ---
 
@@ -349,6 +400,7 @@ SchematesisScan(
 
 ---
 
+<<<<<<< HEAD:incalmo/core/strategies/llm/interfaces/preprompts/api_testing/codebase.txt
 ### 5.3 NucleiScan
 Runs nuclei with community API/microservice templates against a target URL.
 Detects exposed admin panels, misconfigured auth, token exposure, and known CVEs.
@@ -419,4 +471,12 @@ async def query(environment_state_service, attack_graph_service):
 # Check probed endpoints
 async def query(environment_state_service, attack_graph_service):
     return environment_state_service.discovered_endpoints
+
+# Check whether a specific URL + method has already been requested
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.was_requested("https://api.example.com/v1/users", "GET")
+
+# Review full request history
+async def query(environment_state_service, attack_graph_service):
+    return environment_state_service.request_history
 ```

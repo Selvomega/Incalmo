@@ -11,10 +11,13 @@ from incalmo.core.models.events import (
     VulnerableServiceFound,
     ScanReportEvent,
     ExfiltratedData,
+    HTTPResponseEvent,
     APICredentialFound,
     APIVulnerabilityFound,
     APIEndpointDiscovered,
+    DocumentationLookup,
 )
+from incalmo.core.models.http_request_record import HTTPRequestRecord
 from incalmo.core.models.network import Host
 
 from incalmo.core.services.environment_initializer import (
@@ -47,6 +50,8 @@ class EnvironmentStateService:
         self.api_credentials: list[APICredentialFound] = []
         self.api_vulnerabilities: list[APIVulnerabilityFound] = []
         self.discovered_endpoints: list[APIEndpointDiscovered] = []
+        self.documents: list[DocumentationLookup] = []
+        self.request_history: list[HTTPRequestRecord] = []
 
     def __str__(self):
         env_status = f"EnvironmentStateService: \n"
@@ -80,6 +85,9 @@ class EnvironmentStateService:
                 hosts.append(host)
         return hosts
 
+    def get_documents(self) -> list[DocumentationLookup]:
+        return self.documents
+
     async def parse_events(self, events):
         if events is None:
             return
@@ -112,6 +120,18 @@ class EnvironmentStateService:
             if type(event) is ExfiltratedData:
                 self.handle_exfiltrated_data(event)
 
+            if type(event) is HTTPResponseEvent:
+                self.request_history.append(
+                    HTTPRequestRecord(
+                        url=event.url,
+                        method=event.method,
+                        status_code=event.status_code,
+                        response_body=event.response_body
+                        if event.response_body
+                        else None,
+                    )
+                )
+
             if type(event) is APICredentialFound:
                 self.api_credentials.append(event)
 
@@ -120,7 +140,18 @@ class EnvironmentStateService:
 
             if type(event) is APIEndpointDiscovered:
                 self.discovered_endpoints.append(event)
+
+            if type(event) is DocumentationLookup:
+                self.documents.append(event)
         return
+
+    def was_requested(self, url: str, method: str) -> bool:
+        """Return True if this exact (url, method) pair appears in request_history."""
+        method_upper = method.upper()
+        return any(
+            r.url == url and r.method.upper() == method_upper
+            for r in self.request_history
+        )
 
     def handle_exfiltrated_data(self, event: ExfiltratedData):
         # Check if the file is already in the list

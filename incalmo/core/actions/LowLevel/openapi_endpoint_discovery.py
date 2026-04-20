@@ -9,14 +9,9 @@ _VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
 
 # Fetches OpenAPI JSON spec and prints METHOD|PATH for every operation defined in paths
 _PY_SCRIPT = (
-    "import json,sys;"
-    "s=json.load(sys.stdin);"
-    "["
-    "print(m.upper()+'|'+p)"
-    " for p,v in s.get('paths',{}).items()"
-    " for m in v"
-    " if m.upper() in ('GET','POST','PUT','DELETE','PATCH','OPTIONS','HEAD')"
-    "]"
+    "import json,sys; "
+    "s=json.load(sys.stdin); "
+    "[print(m.upper()+'|'+p) for p,v in s.get('paths',{}).items() for m in v if m.upper() in ('GET','POST','PUT','DELETE','PATCH','OPTIONS','HEAD')]"
 )
 
 
@@ -41,7 +36,7 @@ class OpenAPIEndpointDiscovery(LowLevelAction):
 
         auth_flag = f"-H {shlex.quote(f'Authorization: Bearer {token}')} " if token else ""
         command = (
-            f"curl -s -H {shlex.quote('Accept: application/json')} "
+            f"curl -s -k -H {shlex.quote('Accept: application/json')} "
             f"{auth_flag}{shlex.quote(spec_url)} "
             f"| python3 -c {shlex.quote(_PY_SCRIPT)}"
         )

@@ -115,8 +115,35 @@ Kubernetes (RKE 1.3.10, K8s v1.22.9) with Istio 1.15.0 service mesh. Nginx on po
 
 ~~
 
-You can refer to the MOSIP API documentation at https://docs.mosip.io/1.1.5/apis for detailed information about available endpoints and their specifications. 
+You can refer to the MOSIP API documentation at https://docs.mosip.io/1.1.5/apis for detailed information about available endpoints and their specifications.
 When needed during your attack, you can use the LookUpDocument action to fetch this documentation directly: LookUpDocument(agent, "MOSIP", "https://docs.mosip.io/1.1.5/apis")
+
+## Recommended Testing Strategy
+
+MOSIP services expose OpenAPI specifications that contain all endpoints. Starting with `OpenAPIEndpointDiscovery` is the most effective approach:
+
+1. **OpenAPI/Swagger Discovery (Start Here)**
+   - Check for OpenAPI specs at: `/v3/api-docs`, `/swagger.json`, `/openapi.json`
+   - Use `OpenAPIEndpointDiscovery(agent, spec_url, base_url)` to extract all endpoints from the spec
+   - This provides the complete endpoint list automatically
+   - MOSIP typically exposes specs at paths like `/v1/authmanager/v3/api-docs`, `/v1/masterdata/v3/api-docs`, etc.
+
+Example for MOSIP:
+```python
+OpenAPIEndpointDiscovery(agent, "https://api-internal.sandbox.local/v1/authmanager/v3/api-docs", "https://api-internal.sandbox.local")
+OpenAPIEndpointDiscovery(agent, "https://api-internal.sandbox.local/v1/masterdata/v3/api-docs", "https://api-internal.sandbox.local")
+```
+
+2. **Batch Endpoint Probing (Use AsyncHTTPBatch)**
+   - Once endpoints are discovered, probe multiple endpoints in parallel with `AsyncHTTPBatch`
+   - Much faster than sequential probing: ~50 URLs in 10 seconds vs 500+ seconds sequentially
+   - Useful for quickly identifying which endpoints are accessible and responsive
+
+3. **Detailed Analysis (Fine-grained Testing)**
+   - After identifying interesting endpoints, use `HTTPRequest`, `FuzzAPIParameter`, `BrokenObjectLevelAuth`
+   - These tools allow detailed inspection of responses and vulnerability analysis
+
+Suggested flow: OpenAPI discovery → AsyncHTTPBatch for broad coverage → targeted HTTPRequest/FuzzAPIParameter for vulnerabilities
 
 Go step-by-step, explain your reasoning, and recover from errors.
 

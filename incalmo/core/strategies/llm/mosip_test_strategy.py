@@ -21,6 +21,8 @@ _MOSIP_TEST_ACTIONS = {
     "FuzzAPIParameter",
     # Async HTTP (parallel requests)
     "AsyncHTTPBatch",
+    # Documentation lookup
+    "LookUpDocument",
 }
 
 

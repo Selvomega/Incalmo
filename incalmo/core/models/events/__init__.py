@@ -23,3 +23,4 @@ from .http_batch_summary_event import HTTPBatchSummaryEvent
 from .api_endpoint_discovered_event import APIEndpointDiscovered
 from .api_credential_found_event import APICredentialFound
 from .api_vulnerability_found_event import APIVulnerabilityFound
+from .documentation_lookup_event import DocumentationLookup

@@ -30,3 +30,7 @@ from .api_endpoint_probe import APIEndpointProbe
 from .broken_object_level_auth import BrokenObjectLevelAuth
 from .missing_function_level_auth import MissingFunctionLevelAuth
 from .fuzz_api_parameter import FuzzAPIParameter
+from .openapi_endpoint_discovery import OpenAPIEndpointDiscovery
+from .schemathesis_scan import SchematesisScan
+from .nuclei_scan import NucleiScan
+from .zap_scan import ZAPScan

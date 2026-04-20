@@ -19,6 +19,11 @@ _API_TESTING_ACTIONS = {
     "BrokenObjectLevelAuth",
     "MissingFunctionLevelAuth",
     "FuzzAPIParameter",
+    # Library-backed microservice testing
+    "OpenAPIEndpointDiscovery",
+    "SchematesisScan",
+    "NucleiScan",
+    "ZAPScan",
 }
 
 

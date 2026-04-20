@@ -287,7 +287,121 @@ FuzzAPIParameter(agent, "https://api.example.com/v1/search", "POST", "query",
 
 ---
 
-## 5. Useful Query Patterns
+## 5. Library-backed Microservice Testing Actions
+
+These actions wrap well-known security testing tools installed on the attacker agent.
+They provide deeper analysis than manual curl probing.
+
+### 5.1 OpenAPIEndpointDiscovery
+Fetches an OpenAPI/Swagger JSON spec and emits one `APIEndpointDiscovered` per operation.
+Use this **before** `APIEndpointProbe` loops — it gives you the full attack surface for free.
+
+```python
+OpenAPIEndpointDiscovery(agent, spec_url, base_url, token=None)
+```
+
+- `spec_url` — URL of the OpenAPI JSON spec (e.g. `/v1/swagger.json`, `/openapi.json`)
+- `base_url` — base URL used to construct full endpoint URLs (e.g. `"https://api.example.com"`)
+- `token` — Bearer token for authenticated spec fetching (optional)
+
+Returns: `[APIEndpointDiscovered]` — one per path+method defined in the spec
+
+Example:
+```python
+OpenAPIEndpointDiscovery(
+    agent,
+    "https://api.example.com/swagger.json",
+    "https://api.example.com",
+)
+```
+
+After this, query `environment_state_service.discovered_endpoints` to iterate over all known endpoints.
+
+---
+
+### 5.2 SchematesisScan
+Runs schemathesis property-based testing against an OpenAPI spec. Auto-generates hundreds
+of test cases and checks for server errors and response schema violations.
+
+```python
+SchematesisScan(agent, spec_url, base_url=None, token=None, checks="not_a_server_error,response_conformance")
+```
+
+- `spec_url` — URL of the OpenAPI spec
+- `base_url` — override the server URL in the spec (optional)
+- `token` — Bearer token sent with every generated request (optional)
+- `checks` — comma-separated schemathesis check names (default covers 5xx and schema violations)
+
+Returns: `[APIVulnerabilityFound]` — one per failing endpoint, `vuln_type="SchemaViolation"`
+
+Requires `schemathesis` on the attacker agent: `pip install schemathesis`
+
+Example:
+```python
+token = environment_state_service.api_credentials[0].token_value
+SchematesisScan(
+    agent,
+    "https://api.example.com/openapi.json",
+    base_url="https://api.example.com",
+    token=token,
+)
+```
+
+---
+
+### 5.3 NucleiScan
+Runs nuclei with community API/microservice templates against a target URL.
+Detects exposed admin panels, misconfigured auth, token exposure, and known CVEs.
+
+```python
+NucleiScan(agent, target_url, tags="api,auth,token,exposure,misconfig", token=None, severity="medium,high,critical")
+```
+
+- `target_url` — base URL to scan (e.g. `"https://api.example.com"`)
+- `tags` — comma-separated template tags to filter (default covers API and auth templates)
+- `token` — Bearer token added to every request (optional)
+- `severity` — minimum severity to report (default: medium and above)
+
+Returns: `[APIVulnerabilityFound]` — one per nuclei finding, `vuln_type="NucleiTemplate"`
+
+Requires `nuclei` on the attacker agent:
+  `go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest`
+
+Example:
+```python
+NucleiScan(agent, "https://api.example.com", tags="api,auth,exposure")
+```
+
+---
+
+### 5.4 ZAPScan
+Runs OWASP ZAP active scan against an OpenAPI spec via the official Docker image.
+Covers passive analysis, active injection (SQLi, XSS, path traversal), and auth checks.
+Reports only medium severity and above. **Slowest action** — allow 15–60 minutes.
+
+```python
+ZAPScan(agent, spec_url, format="openapi", token=None, max_scan_mins=60, setup=True)
+```
+
+- `spec_url` — URL of the OpenAPI spec (ZAP spiders from this)
+- `format` — spec format: `"openapi"`, `"soap"`, or `"graphql"`
+- `token` — Bearer token injected into every ZAP request via the replacer script (optional)
+- `max_scan_mins` — active scan timeout in minutes (default 60)
+- `setup` — pull the ZAP Docker image if not already cached (default True, ~500 MB on first run)
+
+Returns: `[APIVulnerabilityFound]` — one per affected URL, `vuln_type="ZAPAlert"`, includes CWE ID
+
+Requires Docker on the attacker agent.
+
+Example:
+```python
+token = environment_state_service.api_credentials[0].token_value
+ZAPScan(agent, "https://api.example.com/openapi.json", token=token, max_scan_mins=30)
+```
+
+---
+
+## 6. Useful Query Patterns
 
 ```python
 # Get current agent

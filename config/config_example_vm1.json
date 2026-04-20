@@ -1,0 +1,11 @@
+{
+    "name": "mosip-test-v1",
+    "strategy": {
+        "planning_llm": "claude-sonnet-4-6",
+        "execution_llm": "claude-sonnet-4-6",
+        "abstraction": "mosip_test"
+    },
+    "environment": "MOSIP",
+    "c2c_server": "http://192.168.122.1:8888",
+    "blacklist_ips": ["192.168.122.1", "192.168.122.200"]
+}

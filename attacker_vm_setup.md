@@ -231,11 +231,249 @@ rm -f /home/peilin/Incalmo/celery.db /home/peilin/Incalmo/celery_results.db
 ```
 
 
+---
+
+## Multi-VM Setup: Adding a Second Attacker VM (192.168.122.200)
+
+For testing network isolation scenarios, you can add a second attacker VM that communicates with a separate C2 server on port 8887. This enables partitioned agent networks where communication between the two VMs is blocked.
+
+### Network Topology with Two VMs
+
+```
+HOST (192.168.122.1)
+│
+│  virbr0 (192.168.122.0/24)
+│  ├── mosip-cluster      (192.168.122.20)   ← target
+│  ├── obs-cluster        (192.168.122.10)   ← untouched
+│  ├── attacker-vm        (192.168.122.100)  ← sandcat agent, C2 on port 8888
+│  └── attacker-vm-2      (192.168.122.200)  ← sandcat agent, C2 on port 8887
+│
+│  Network isolation: Traffic between .100 and .200 is DROPPED
+```
+
+### Step 1: Block Communication Between VMs
+
+Add firewall rules to prevent direct communication between the two attacker VMs:
+
+```bash
+sudo iptables -A FORWARD -s 192.168.122.100 -d 192.168.122.200 -j DROP
+sudo iptables -A FORWARD -s 192.168.122.200 -d 192.168.122.100 -j DROP
+```
+
+Also block the second VM from accessing host services (only allow C2 on 8887):
+
+```bash
+sudo iptables -A INPUT -i virbr0 -s 192.168.122.200 -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -i virbr0 -s 192.168.122.200 -p udp --dport 53 -j ACCEPT
+sudo iptables -A INPUT -i virbr0 -s 192.168.122.200 -p tcp --dport 53 -j ACCEPT
+sudo iptables -A INPUT -i virbr0 -s 192.168.122.200 -p tcp --dport 8887 -j ACCEPT
+sudo iptables -A INPUT -i virbr0 -s 192.168.122.200 -j DROP
+```
+
+### Step 2: Create the Second Attacker VM
+
+Generate cloud-init ISO for the second VM:
+
+```bash
+mkdir -p /tmp/attacker-vm-2
+
+cat > /tmp/attacker-vm-2/meta-data <<EOF
+instance-id: attacker-vm-2
+local-hostname: attacker-vm-2
+EOF
+
+cat > /tmp/attacker-vm-2/user-data <<EOF
+#cloud-config
+users:
+  - name: attacker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - $(cat ~/.ssh/incalmo.pub)
+package_update: true
+packages:
+  - nmap
+  - nikto
+  - ncat
+  - python3
+  - python3-pip
+  - wget
+  - openssh-client
+runcmd:
+  - pip install --user httpx pyjwt requests-oauthlib schemathesis beautifulsoup4
+EOF
+
+cloud-localds /tmp/attacker-vm-2/attacker-cloud-init.iso \
+    /tmp/attacker-vm-2/user-data \
+    /tmp/attacker-vm-2/meta-data
+```
+
+Create the VM creation script (MAC 52:54:00:dd:ee:ff is unique for VM-2):
+
+```bash
+cat > /tmp/attacker-vm-2/create-attacker-vm-2.sh <<'EOF'
+#!/bin/bash
+set -e
+
+cp /tmp/attacker-vm-2/attacker-cloud-init.iso /var/lib/libvirt/images/attacker-vm-2-cloud-init.iso
+
+qemu-img create -f qcow2 \
+    -b /var/lib/libvirt/images/jammy-server-cloudimg-amd64.img \
+    -F qcow2 \
+    /var/lib/libvirt/images/attacker-vm-2.qcow2 20G
+
+virsh net-update default add ip-dhcp-host \
+    '<host mac="52:54:00:dd:ee:ff" name="attacker-vm-2" ip="192.168.122.200"/>' \
+    --live --config 2>/dev/null || echo "DHCP reservation already exists, skipping."
+
+virt-install \
+    --connect qemu:///system \
+    --name attacker-vm-2 \
+    --memory 2048 \
+    --vcpus 1 \
+    --disk /var/lib/libvirt/images/attacker-vm-2.qcow2,bus=virtio \
+    --disk /var/lib/libvirt/images/attacker-vm-2-cloud-init.iso,device=cdrom \
+    --network network=default,mac=52:54:00:dd:ee:ff \
+    --os-variant ubuntu22.04 \
+    --noautoconsole \
+    --import
+
+echo "VM-2 created. Waiting for it to get an IP..."
+sleep 20
+virsh domifaddr attacker-vm-2
+EOF
+
+chmod +x /tmp/attacker-vm-2/create-attacker-vm-2.sh
+sudo /tmp/attacker-vm-2/create-attacker-vm-2.sh
+```
+
+Verify SSH access to the second VM:
+
+```bash
+ssh -i ~/.ssh/incalmo attacker@192.168.122.200
+```
+
+### Step 3: Configure C2 Server for Port 8887
+
+The C2 server port is now configurable via the `C2_PORT` environment variable. The primary VM uses port 8888 (default), and the second VM uses 8887.
+
+### Step 4: Run Multiple C2 Servers
+
+**Terminal 1 — C2 server for VM-1 (port 8888):**
+```bash
+cd /home/peilin/Incalmo
+uv run python -m incalmo.c2server.c2server
+```
+
+**Terminal 2 — C2 server for VM-2 (port 8887):**
+```bash
+cd /home/peilin/Incalmo
+C2_PORT=8887 uv run python -m incalmo.c2server.c2server
+```
+
+### Step 5: Deploy Sandcat and Run Incalmo
+
+**Terminal 3 — Copy sandcat to both VMs (first time only):**
+```bash
+scp -i ~/.ssh/incalmo incalmo/c2server/agents/sandcat.go attacker@192.168.122.100:~/sandcat.go
+scp -i ~/.ssh/incalmo incalmo/c2server/agents/sandcat.go attacker@192.168.122.200:~/sandcat.go
+
+ssh -i ~/.ssh/incalmo attacker@192.168.122.100 'chmod +x ~/sandcat.go'
+ssh -i ~/.ssh/incalmo attacker@192.168.122.200 'chmod +x ~/sandcat.go'
+```
+
+**Terminal 4 — Start sandcat on VM-1:**
+```bash
+ssh -i ~/.ssh/incalmo attacker@192.168.122.100 \
+  'nohup ~/sandcat.go -server http://192.168.122.1:8888 -group red > /dev/null 2>&1 &'
+```
+
+**Terminal 5 — Start sandcat on VM-2:**
+```bash
+ssh -i ~/.ssh/incalmo attacker@192.168.122.200 \
+  'nohup ~/sandcat.go -server http://192.168.122.1:8887 -group blue > /dev/null 2>&1 &'
+```
+
+### Step 6: Configure Incalmo for Each VM
+
+**For VM-1 (port 8888):**
+```json
+{
+    "name": "mosip-vm1",
+    "strategy": {
+        "planning_llm": "claude-3.5-sonnet",
+        "execution_llm": "claude-3.5-sonnet",
+        "abstraction": "incalmo"
+    },
+    "environment": "MOSIP",
+    "c2c_server": "http://192.168.122.1:8888",
+    "blacklist_ips": ["192.168.122.1", "192.168.122.200"]
+}
+```
+
+**For VM-2 (port 8887):**
+```json
+{
+    "name": "mosip-vm2",
+    "strategy": {
+        "planning_llm": "claude-3.5-sonnet",
+        "execution_llm": "claude-3.5-sonnet",
+        "abstraction": "incalmo"
+    },
+    "environment": "MOSIP",
+    "c2c_server": "http://192.168.122.1:8887",
+    "blacklist_ips": ["192.168.122.1", "192.168.122.100"]
+}
+```
+
+**Terminal 6 — Run Incalmo** (use appropriate config for desired VM):
+```bash
+cd /home/peilin/Incalmo
+uv run main.py
+```
+
+### Teardown: Multiple VMs
+
+```bash
+# 1. Stop Incalmo and sandcat
+pkill -f sandcat.go
+pkill -f "c2server"
+pkill -f "main.py"
+
+# 2. Destroy both VMs
+sudo virsh destroy attacker-vm 2>/dev/null
+sudo virsh destroy attacker-vm-2 2>/dev/null
+sudo virsh undefine attacker-vm 2>/dev/null
+sudo virsh undefine attacker-vm-2 2>/dev/null
+
+# 3. Clean up disk images and ISO files
+sudo rm -f /var/lib/libvirt/images/attacker-vm.qcow2
+sudo rm -f /var/lib/libvirt/images/attacker-vm-2.qcow2
+sudo rm -f /var/lib/libvirt/images/attacker-cloud-init.iso
+sudo rm -f /var/lib/libvirt/images/attacker-vm-2-cloud-init.iso
+sudo rm -rf /tmp/attacker-vm /tmp/attacker-vm-2
+
+# 4. Remove DHCP reservations
+virsh net-update default delete ip-dhcp-host \
+    '<host mac="52:54:00:cc:dd:ee" name="attacker-vm" ip="192.168.122.100"/>' \
+    --live --config 2>/dev/null || true
+
+virsh net-update default delete ip-dhcp-host \
+    '<host mac="52:54:00:dd:ee:ff" name="attacker-vm-2" ip="192.168.122.200"/>' \
+    --live --config 2>/dev/null || true
+
+# 5. Clean up Celery state for both C2 servers
+rm -f /home/peilin/Incalmo/celery.db /home/peilin/Incalmo/celery_results.db
+```
+
+---
+
 ## How It Works
 
 1. The LLM (Claude) decides what action to take based on the current network state
-2. Incalmo sends the command to the C2 server via `C2ApiClient` (HTTP to port 8888)
-3. The C2 server queues the command for the sandcat agent
+2. Incalmo sends the command to the C2 server via `C2ApiClient` (HTTP to port 8888 or 8887)
+3. The C2 server queues the command for the appropriate sandcat agent
 4. Sandcat on the attacker VM picks it up on its next beacon (every 3 seconds), executes it as bash, and returns the output
 5. The output is fed back to the LLM as context for the next step
-6. All actual network traffic to MOSIP originates from `192.168.122.100` — the attacker VM
+6. All actual network traffic to MOSIP originates from the attacker VM (`192.168.122.100` or `192.168.122.200`) — never from the host
+7. With multiple VMs, network isolation rules prevent agents from communicating with each other, simulating segmented networks

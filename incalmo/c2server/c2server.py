@@ -161,4 +161,5 @@ if __name__ == "__main__":
     #     debugpy.listen(("0.0.0.0", DEBUG_PORT))
     #     debugpy.wait_for_client()
 
-    app.run(host="0.0.0.0", port=8888, debug=DEBUG)
+    C2_PORT = int(os.getenv("C2_PORT", 8888))
+    app.run(host="0.0.0.0", port=C2_PORT, debug=DEBUG)

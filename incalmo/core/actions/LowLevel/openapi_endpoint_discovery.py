@@ -2,6 +2,7 @@ import shlex
 
 from incalmo.core.actions.low_level_action import LowLevelAction
 from incalmo.core.models.events.api_endpoint_discovered_event import APIEndpointDiscovered
+from incalmo.core.models.events.bash_output_event import BashOutputEvent
 from incalmo.models.agent import Agent
 from incalmo.models.command_result import CommandResult
 
@@ -41,7 +42,7 @@ class OpenAPIEndpointDiscovery(LowLevelAction):
 
         auth_flag = f"-H {shlex.quote(f'Authorization: Bearer {token}')} " if token else ""
         command = (
-            f"curl -s -H {shlex.quote('Accept: application/json')} "
+            f"curl -s --max-time 30 -H {shlex.quote('Accept: application/json')} "
             f"{auth_flag}{shlex.quote(spec_url)} "
             f"| python3 -c {shlex.quote(_PY_SCRIPT)}"
         )
@@ -58,4 +59,5 @@ class OpenAPIEndpointDiscovery(LowLevelAction):
                 continue
             full_url = self.base_url + path
             events.append(APIEndpointDiscovered(full_url, method, "spec"))
+
         return events
